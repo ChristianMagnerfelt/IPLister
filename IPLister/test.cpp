@@ -1,10 +1,15 @@
 #include <winsock2.h>
 #include <iphlpapi.h>
 #include <IcmpAPI.h>
-#include <stdio.h>
+
+#define _CRTDBG_MAP_ALLOC
+#include <cstdlib>
+#include <crtdbg.h>
+#include <cstdio>
 
 #include <vector>
 #include <algorithm>
+#include <chrono>
 
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
@@ -39,6 +44,8 @@ bool getListofIPv4Addresses(unsigned int networkAddr, unsigned int subnetMask, u
 	IPAddr ipaddr = networkAddr;
     DWORD replySize = sizeof(ICMP_ECHO_REPLY);
 
+	
+
 	std::vector<IPAddr> ipAddrVec(numAddrToPing);
 	std::vector<ICMP_ECHO_REPLY> replyVec(numAddrToPing);
 	std::vector<HANDLE> handleVec(numAddrToPing);
@@ -57,17 +64,24 @@ bool getListofIPv4Addresses(unsigned int networkAddr, unsigned int subnetMask, u
 		eventHandle = CreateEvent(NULL, NULL, false, NULL);
 	});
 
+	
+
 	// Create Icmp handle
 	HANDLE hlcmpFile = IcmpCreateFile();
 
 	// Start pinging
 	for(unsigned int i = 0; i < ipAddrVec.size(); ++i)
 	{
-		IcmpSendEcho2(hlcmpFile, handleVec[i], NULL, NULL, ipAddrVec[i], NULL, 0, NULL, &(replyVec[i]), replySize, 5);
+		IcmpSendEcho2(hlcmpFile, handleVec[i], NULL, NULL, ipAddrVec[i], NULL, 0, NULL, &(replyVec[i]), replySize, 10);
 	}
+
+
 
 	// Wait for all events to be signaled
 	WaitForMultipleObjects(handleVec.size(), handleVec.data(), true, 1000);
+
+
+
 
 	// Parse all replies
 	for(unsigned int i = 0; i < replyVec.size(); ++i)
@@ -87,16 +101,22 @@ bool getListofIPv4Addresses(unsigned int networkAddr, unsigned int subnetMask, u
 	return true;
 }
 int main()
-{
+{	
 	IPAddr ipaddr = inet_addr("192.168.0.0");
 	IPAddr subnetaddr = inet_addr("255.255.255.0");
 	
 	unsigned int * addresses = 0;
 	unsigned int * numAddresses = 0;
+	
+	std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
 	if(!getListofIPv4Addresses(ipaddr, subnetaddr, addresses, numAddresses))
 	{
 		printf("fail");
 	}
+	std::chrono::duration<double> duration = std::chrono::high_resolution_clock::now() - start;
+	printf("Test took %f seconds\n", duration.count());
+
+	_CrtDumpMemoryLeaks();
 
 	system("pause");
 	return 0;
