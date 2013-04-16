@@ -3,6 +3,9 @@
 #include <IcmpAPI.h>
 #include <stdio.h>
 
+#include <vector>
+#include <algorithm>
+
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
 
@@ -34,45 +37,51 @@ bool getListofIPv4Addresses(unsigned int networkAddr, unsigned int subnetMask, u
 	unsigned int numAddrToPing = (0xFFFFFFFF ^ (subnetMask << (32 - count))) - 2;
 
 	IPAddr ipaddr = networkAddr;
-	char sendData[2] = "1";
-    DWORD replySize = (sizeof(ICMP_ECHO_REPLY) + sizeof(sendData));
-    LPVOID replyBuffer = (VOID*) malloc(replySize);
+    DWORD replySize = sizeof(ICMP_ECHO_REPLY);
+
+	std::vector<IPAddr> ipAddrVec(numAddrToPing);
+	std::vector<ICMP_ECHO_REPLY> replyVec(numAddrToPing);
+	std::vector<HANDLE> handleVec(numAddrToPing);
+
+	// Create vector of all ips to ping
+	ipaddr = ntohl(ipaddr);
+	std::generate(ipAddrVec.begin(), ipAddrVec.end(), [&ipaddr](){
+		return ++ipaddr;
+	});
+	std::for_each(ipAddrVec.begin(), ipAddrVec.end(), [](IPAddr & addr){
+		addr = htonl(addr);
+	});
+
+	// Create vector of event handles
+	std::for_each(handleVec.begin(), handleVec.end(), [](HANDLE & eventHandle){
+		eventHandle = CreateEvent(NULL, NULL, false, NULL);
+	});
 
 	// Create Icmp handle
 	HANDLE hlcmpFile = IcmpCreateFile();
 
 	// Start pinging
-	for(unsigned int i = 0; i < numAddrToPing; ++i)
+	for(unsigned int i = 0; i < ipAddrVec.size(); ++i)
 	{
-		ipaddr = ntohl(ipaddr);
-		ipaddr += 1;
-		ipaddr = htonl(ipaddr);
-
-		struct in_addr replyAddr;
-		replyAddr.S_un.S_addr = ipaddr;
-		printf("IP-Address: %s ", inet_ntoa(replyAddr));
-
-		DWORD rv = IcmpSendEcho(hlcmpFile, ipaddr, NULL, 0, NULL, replyBuffer, replySize, 1);
-		if(rv != 0)
-		{
-			printf("OK");
-			//PICMP_ECHO_REPLY echoReply = (PICMP_ECHO_REPLY)replyBuffer;
-			//printf("Number of replies: %d\n", rv);
-			//printf("---\n");
-			
-			//printf("Status: %ld\n", echoReply->Status);
-			//printf("Roundtrip time: %ld ms\n", echoReply->RoundTripTime);
-		}
-		else
-		{
-			
-			//DWORD error = GetLastError();
-			//printf("Error: %d\n", error);
-		}
-		printf("\n");
+		IcmpSendEcho2(hlcmpFile, handleVec[i], NULL, NULL, ipAddrVec[i], NULL, 0, NULL, &(replyVec[i]), replySize, 5);
 	}
 
-	free(replyBuffer);
+	// Wait for all events to be signaled
+	WaitForMultipleObjects(handleVec.size(), handleVec.data(), true, 1000);
+
+	// Parse all replies
+	for(unsigned int i = 0; i < replyVec.size(); ++i)
+	{
+		DWORD rv = IcmpParseReplies(&(replyVec[i]), replySize);
+
+		if(rv != 0)
+		{
+			struct in_addr replyAddr;
+			replyAddr.S_un.S_addr = replyVec[i].Address;
+			printf("IP-Address: %s \n", inet_ntoa(replyAddr));
+		}
+	}
+
 	IcmpCloseHandle(hlcmpFile);
 
 	return true;
