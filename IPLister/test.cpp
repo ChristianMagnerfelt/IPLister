@@ -16,6 +16,7 @@
 
 #if DLL_TEST
 	typedef bool (*ListIPv4AddrFunc)(unsigned int, unsigned int, unsigned int **);
+	typedef void (*DestroyIPv4Addr)(unsigned int **);
 #endif
 
 int main()
@@ -25,10 +26,13 @@ int main()
 	
 	unsigned int * addr = 0;
 
+	// Load DLL and get addresses of repective function
 	#if DLL_TEST
 		ListIPv4AddrFunc func;
+		DestroyIPv4Addr destroyFunc;
 		HINSTANCE hInstLibrary = LoadLibrary("IPLister.dll");
 		func = (ListIPv4AddrFunc)GetProcAddress(hInstLibrary, "getListofIPv4Addresses");
+		destroyFunc = (DestroyIPv4Addr)GetProcAddress(hInstLibrary, "destroyIPv4Addr");
 	#endif
 
 	std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
@@ -43,6 +47,7 @@ int main()
 		{
 			printf("fail");
 		}
+		
 	#endif
 
 	std::chrono::duration<double> duration = std::chrono::high_resolution_clock::now() - start;
@@ -55,6 +60,12 @@ int main()
 	}
 
 	printf("Test took %f seconds\n", duration.count());
+
+	#if DLL_TEST
+		destroyFunc(&addr);
+	#else
+		destroyIPv4Addr(&addr);
+	#endif
 
 	_CrtDumpMemoryLeaks();
 
